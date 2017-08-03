@@ -254,15 +254,17 @@ Servo tpan;
 Servo tilt;
 LiquidCrystal_I2C lcd(0x3F,16,2);
 
+
 //all of my global variables
 double latitude, longitude, Time, hours, minutes, seconds;
 int Day, Month, Year;
 int printLatLong = 10; // set this to less than five to print the coordinates
 double daynow, d;
 int planet = -1;
-byte printStuf = 1; //set to one in order to print planet stuff
+byte printStuf = 0; //set to one in order to print planet stuff
 int counter;
-double rlpitch, rlroll;
+double rlpitch, rlroll, rp, rr;
+double pitchOffset, rollOffset;
 
 //Keypad Stuff
 const byte ROWS = 4; //four rows
@@ -287,9 +289,30 @@ char newkey[3];
 byte currentlength;
 char codeEnterred[3];
 byte validcode; // this is zero, unless a valid code is enterred, then it becomes one
+byte codelen;
+
+//time password stuff
+   char nkey[6];
+   char ce[6];
+   byte vcode;
+   byte clen;
+
+//same but for date  
+   char nkeyy[8];
+   char cee[8];
+   byte vcodee;
+   byte clenn; 
+
+ //planets
+    char nke[1];
+   char c[1];
+   byte vcod;
+   byte cle;   
+   
 int ff = 0; //one is fastforward
 byte stabilize = 1; //set to one in order to activate stabilization
-
+byte curTime = 1; //set to one if using current time
+byte curDate = 1; //set to one if using current date;
 
 void setup() {
   // put your setup code here, to run once:
@@ -305,6 +328,10 @@ void setup() {
   lcd.print("Initializing");
   delay(1000);
   currentlength = 1;
+  clen = 1;
+  pinMode(43, OUTPUT);
+  pinMode(53, OUTPUT);
+  pinMode(52, OUTPUT);
 
 
 if (gps.time.isValid()) {
@@ -312,6 +339,24 @@ if (gps.time.isValid()) {
     minutes = gps.time.minute();
     seconds = gps.time.second();
     Time = hours + (minutes / 60) + (seconds / 3600);
+    digitalWrite(52, HIGH);
+  }
+  else {
+    //Serial.println("TIME INVAlID");
+    hours = 0;
+    minutes = 0;
+    seconds = 0;
+    digitalWrite(52, LOW);
+  }
+  if (gps.date.isValid()) {
+    Day = gps.date.day();
+    Month = gps.date.month();
+    Year = gps.date.year();
+  }
+  else {
+    Day = 2;
+    Month = 8;
+    Year = 2017;
   }
 
   Wire.begin();
@@ -350,7 +395,6 @@ if (gps.time.isValid()) {
 
 
   smartDelay(1);
-
   counter = 1;
   lcd.clear();
   lcd.setCursor(0,0);
@@ -363,13 +407,7 @@ void loop() {
     // put your main code here, to run repeatedly:
   int cp = planet;
     //potentiometer stuff
-  int pv = analogRead(1);
-  if(pv > 1000){
-    ff = 1;
-    }
-  else if(pv < 1000){
-    ff = 0;  
-  }
+  
   //smartDelay(1000);
   MPUloop();
   if (gps.location.isValid()) {
@@ -380,7 +418,7 @@ void loop() {
     latitude = 40.8721;
     longitude = -73.9694;
   }
- if(ff == 0){
+ if(curTime == 1){
   if (gps.time.isValid()) {
     hours = gps.time.hour();
     minutes = gps.time.minute();
@@ -391,7 +429,8 @@ void loop() {
     //Serial.println("TIME INVAlID");
     hours = 16;
     minutes = 15;
-  }
+  }}
+  if(curDate == 1){
   if (gps.date.isValid()) {
     Day = gps.date.day();
     Month = gps.date.month();
@@ -401,8 +440,8 @@ void loop() {
     Day = 27;
     Month = 7;
     Year = 2017;
-  }
- }
+  }}
+ 
   if (printLatLong < 5)
   {
     printLatLong ++;
@@ -413,7 +452,6 @@ void loop() {
   }
 
   getCode(); //select the planet from the enterred code
-  
   daynow = dayNow(Year, Month, Day);
   d = daynow - 4975.5;
   if(cp != planet){
@@ -472,8 +510,12 @@ void loop() {
       }
     rlpitch = 0-(pitchsum/5);
     rlroll = 0-(rollsum/5);
+    rlpitch += pitchOffset;
+    rlroll += rollOffset;
     
     }
+   rp = rlpitch;
+   rr = rlroll; 
   //get alt/az values and write them to the servos
   if (planet != 3) {
     int ALT = Alt(planet);
@@ -483,6 +525,9 @@ void loop() {
     azServ(AZ);}
     else if (stabilize == 1){
     adjustServos(ALT, AZ, rlpitch, rlroll);
+    Serial.print("pitch");
+    Serial.println(rlpitch);
+    Serial.println(rlroll);
     }
   }
   else {
@@ -496,8 +541,7 @@ void loop() {
   }
 counter++;
 
-  smartDelay(10);
-
+ smartDelay(10);
 }
 //to fix the radians issue
 double pi = 4 * atan(1);
@@ -521,10 +565,7 @@ double constRa[11] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8076667};
 double constDec[11] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 37.431833333};
 
 
-//TO TEST THE CODE, I'M USING THEIR NUMBERS
-//double d = -508.53472;
-
-//We need times, which later we'll get from the GPS Unit. For now, I'll input sample times from the code. Same thing with Latitude and Longitude. For now, our time will be 00:00:00 UT
+//calculates right ascension
 
 double RA(double index) {
   double alpha;
@@ -623,6 +664,7 @@ double RA(double index) {
   }
 }
 
+//calculates declination, the same as the RA calculations except at the end
 double Dec(int index) {
   double delta;
   if(index <= 9){
@@ -710,6 +752,7 @@ double Dec(int index) {
   }
 }
 
+//calculates altitude from RA and DEC
 double Alt(int index) {
   double ha = HA(index);
   //  Serial.print("ha is");
@@ -731,6 +774,8 @@ double Alt(int index) {
   }
   return alt;
 }
+
+//Azimuth
 double Az(int index) {
   double ha = HA(index);
   //  Serial.print("ha is");
@@ -755,7 +800,7 @@ double Az(int index) {
 
 
 
-//gyro stuff
+//Accounts for rotation and adjusts servos accordingly
 void adjustServos(int altAngle, int azAngle, int pitch, int roll) {
   double Xi = calcX(altAngle, azAngle);
   double Yi = calcY(altAngle, azAngle);
@@ -777,7 +822,6 @@ void adjustServos(int altAngle, int azAngle, int pitch, int roll) {
   if(Xi < 0 && Zint <0){
     thetAzInter = 270 - thet;
     }      
-  //double thetAzInter = atan2(Xi,Zint)/rad;
   double Zfin = (Zint * cos(rad * roll)) - (Yint * sin(rad * roll));
   double Yfin = (Zint * sin(rad * roll)) + (Yint * cos(rad * roll));
   double thetAltF = asin(Yfin) / rad;
@@ -806,6 +850,12 @@ void adjustServos(int altAngle, int azAngle, int pitch, int roll) {
 //    Serial.println(secs);
 altServ(thetAltF);
 azServ(thetAzF);
+if(abs(pitch) > 5 or abs(roll)>5){
+  digitalWrite(53, HIGH);
+  }
+else{
+  digitalWrite(53, LOW);  
+}
 
 }
 
@@ -877,6 +927,7 @@ double Zhel(int index) {
   return Z;
 }
 
+//local standard time
 double LST(int index) {
   double Lst = mod((100.46 + (0.985647 * daynow) + longitude + 15 * Time), 360.0);
   //  double number = 100.46 + (0.985647 * daynow) + longitude + 15*Time;
@@ -886,6 +937,7 @@ double LST(int index) {
   //  Serial.println(Lst);
   return Lst;
 }
+//hour angle
 double HA(int index) {
   double ha = LST(index) - 15 * RA(index);
   if (ha < 0) {
@@ -916,8 +968,9 @@ double mod(double x, double y) {
   return modulo;
 }
 
+
 double dayNow(int Year, int Month, int Day) {
-  //first, take the days up to this year from J2000 and the days of all the previous months in the yea
+  //first, take the days up to this year from J2000 and the days of all the previous months in the year
   double daysToYear;
   int daysToMonth;
   //ADD MORE YEARS HERE IN THE FUTURE, FOR NOW THIS'LL ONLY GO UP UNTIL 2020
@@ -984,6 +1037,7 @@ double dayNow(int Year, int Month, int Day) {
   return totDays;
 }
 //take pot value and return which planet
+//I GOT RID OF THE POTENTIOMETER SO THIS CODE IS NOT USED
 int planetSelection(int pv) {
   int p;
   if (pv < 20 ) {
@@ -1062,8 +1116,37 @@ void getCode(){
    if(key){
     if(key == '*'){
       currentlength = 1;
+      codelen = 3;
     }
-    else{
+    if(key == 'A'){
+      currentlength = 1;
+      codelen = 1;
+    }
+     if(key == 'C'){
+        clen = 1;
+        codelen = 6;
+      }
+     if(key == 'D'){
+      clenn = 1;
+      codelen = 8; 
+     }
+
+     if(codelen == 1){
+      if(key!= 'A'){
+      nke[cle-1] = {key};
+      if(cle == 1){
+        strcpy(c,nke);
+        vcod = 1;
+        cle = 0;   
+        }
+      else{
+        vcod = 0;
+        }  
+      cle+=1;
+      }
+    }
+    if(codelen == 3){
+    if(key!= '*'){
     newkey[currentlength-1] = {key};
     if(currentlength == 3){
       strcpy(codeEnterred, newkey);
@@ -1075,7 +1158,39 @@ void getCode(){
       }  
     currentlength+=1;
     }}
+
+    if(codelen == 6){
+      if(key!= 'C'){
+      nkey[clen-1] = {key};
+      if(clen == 6){
+        strcpy(ce,nkey);
+        vcode = 1;
+        clen = 0;   
+        }
+      else{
+        vcode = 0;
+        }  
+      clen+=1;
+      }
+    }
+
+    if(codelen ==8){
+      if(key!= 'D'){
+      nkeyy[clenn-1] = {key};
+      if(clenn == 8){
+        strcpy(cee,nkeyy);
+        vcodee = 1;
+        clenn = 0;   
+        }
+      else{
+        vcodee = 0;
+        }  
+      clenn+=1;
+      }
+    }
+   }
    if(validcode == 1){
+    validcode =0;
    int code = atoi(codeEnterred);
     switch(code){
       case 101:
@@ -1108,7 +1223,7 @@ void getCode(){
       case 201:
         planet = 10;
         break;
-      case 999:
+      case 001:
         stabilize = 1;
         lcd.clear();
         lcd.print("Stabilization:");
@@ -1121,14 +1236,231 @@ void getCode(){
         lcd.print("Stabilization:");
         lcd.setCursor(0,1);
         lcd.print("off");
-        break;              
+        break;
+      case 002:
+        curTime = 0;
+        lcd.clear();
+        lcd.print("Custom Time ");
+       lcd.setCursor(12,0);
+       lcd.print(Time);
+        lcd.setCursor(0,1);
+        lcd.print("Enter C + HHMMSS");
+        break;
+      case 003:
+        curTime = 1;
+        break;
+      case 004:
+        curDate = 0;
+        lcd.clear();
+        lcd.print("CustDate");
+        lcd.setCursor(8,0);
+        lcd.print(Month);
+        lcd.print(Day);
+        lcd.print(Year);
+        lcd.setCursor(0,1);
+        lcd.print("Enter D+MMDDYYYY");
+        break;
+      case 005:
+        curDate = 1;
+        break;
+      case 006:
+        dispDT();
+        break;
+      case 007:
+        whatsUp();
+        break;
+      case 901:
+        lcd.clear();
+        lcd.print("Place on a");
+        lcd.setCursor(0,1);
+        lcd.print("level surface");
+        delay(1000);
+        calibPitchRoll();
+        lcd.clear();
+        lcd.print("Calibrating...");
+        delay(500);
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Please make");
+        lcd.setCursor(0,1);
+        lcd.print("a selection");
+        
+        
+        break;   
       
-      
-      }
-   
+      }}
+   if(vcod == 1){
+    vcod = 0;
+     int code = atoi(c);
+     switch(code){
+      case 1:
+        planet = 1;
+        break;
+      case 2:
+        planet = 2;
+        break;
+      case 3:
+        planet = 3;
+        break; 
+      case 4:
+        planet = 4;
+        break;
+      case 5:
+        planet = 5;
+        break;
+      case 6:
+        planet = 6;
+        break; 
+      case 7:
+        planet = 7;
+        break;
+      case 8:
+        planet = 8;
+        break;
+      case 9:
+        planet = 9;
+        break;
+    }}
+   if(vcode == 1){
+    vcode = 0;
+    float code = atof(ce);
+    changeTime(code);
+    }
+   if(vcodee == 1){
+    vcodee = 0;
+    float code = atof(cee);
+    changeDate(code); 
    }
   
+  
   }
+
+
+void changeTime(float code){
+  double s = code - 100*floor(code/100);
+  double h = floor(code/10000);
+  double m = floor(code/100) - 100*h;
+  seconds = s;
+  minutes = m;
+  hours = h;
+  Time = h + (m/60) + (s/3600);
+  //Serial.print("code:  ");
+  //Serial.println(code);
+  Serial.println(Time);
+}
+void changeDate(float code){
+  Year = code - 10000*floor(code/10000);
+  Month = floor(code/1000000);
+  Day = floor(code/10000) - 100*Month;
+  Serial.println(Year);
+  Serial.println(Month);
+  Serial.println(Day);
+}
+
+void dispDT(){
+  int h = hours - 4;
+    if(h<0){
+    h+=24;
+  }
+  int m = minutes;
+  int s = seconds;
+  lcd.clear();
+  lcd.print(Month);
+  lcd.print("/");
+  lcd.print(Day);
+  lcd.print("/");
+  lcd.print(Year);
+  lcd.setCursor(0, 1);
+  if( h != 0){lcd.print(h);}
+  else{lcd.print("00");}
+  lcd.print(":");
+  if( m != 0){lcd.print(m);}
+  else{lcd.print("00");}
+  lcd.print(":");
+  if( s != 0){lcd.print(s);}
+  else{lcd.print("00");}
+  
+  }
+
+void whatsUp(){
+  int c = 0;
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("What's in the");
+  lcd.setCursor(0,1);
+  lcd.print("sky right now");
+  delay(1000);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  for(int ind = 0; ind <=9; ind++){
+     if(Alt(ind) > 0){
+      printPlanet(ind);
+      lcd.print(", ");
+      c++;
+      }
+      if(c >=3){
+        lcd.setCursor(0,1);
+        }  
+  }
+  
+  }  
+
+void printPlanet(int num){
+  switch(num){
+      case 1:
+        lcd.print("Mer");
+        break;
+      case 2:
+        lcd.print("Ven");
+        break;
+      case 3:
+        lcd.print("");
+        break;
+      case 4:
+        lcd.print("Mars");
+        break;
+      case 5:
+        lcd.print("Jup");
+        break;
+      case 6:
+        lcd.print("Sat");
+        break;
+      case 7:
+        lcd.print("Ura");
+        break;
+      case 8:
+        lcd.print("Nep");
+        break;
+      case 9:
+        lcd.print("Plu");
+        break;
+  
+  }}
+
+void laser( int t){
+
+        digitalWrite(43, HIGH);
+        delay(t);
+        digitalWrite(43, LOW);
+}
+
+
+void calibPitchRoll(){
+  pitchOffset = -rlpitch;
+  rollOffset = -rlroll;
+  
+  }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
