@@ -1,3 +1,12 @@
+ MPU9250 Basic Example Code
+ by: Kris Winer
+ date: April 1, 2014
+ license: Beerware - Use this code however you'd like. If you 
+ find it useful you can buy me a beer some time.
+
+
+
+
 #include <Keypad.h>
 #include <Servo.h>
 #include <TinyGPS++.h>
